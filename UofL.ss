@@ -48,10 +48,14 @@
 
 ;;
 (define (op input vars)
+  (set! input (regexp-replace #rx"([^=])=([^=])" input "\\1 = \\2"))
   (let ((s (regexp-split #rx" +" input)))
         (cond ((string=? (car s) "#definevari")
-           (declare vars (type_map (get_i s 3)) (get_i s 2)))
-          (else "no"))))
+               (if (boolean? (regexp-match #rx"^[0-9]" (get_i s 2)))
+                      (declare vars (type_map (get_i s 3)) (get_i s 2))
+                      "Invalid identifier name"))
+          (else
+           (input)))))
 
 ;;
 (define (main_loop)
