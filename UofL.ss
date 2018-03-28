@@ -13,6 +13,11 @@
         ((string=? "%i" t) 0)
         ((string=? "%f" t) 0)))
 
+(define (type_map t)
+  (cond ((string=? "integer" t) "%i")
+        ((string=? "boolean" t) "%b")
+        ((string=? "float" t) "%f")))
+
 (define (declare vars t k)
   ;; Ask Zhang this
   (cond ((null? vars)
@@ -45,7 +50,7 @@
 (define (op input vars)
   (let ((s (regexp-split #rx" +" input)))
         (cond ((string=? (car s) "#definevari")
-           (declare vars (get_i s 2) (get_i s 3)))
+           (declare vars (type_map (get_i s 3)) (get_i s 2)))
           (else "no"))))
 
 ;;
