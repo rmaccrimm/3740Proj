@@ -1,7 +1,9 @@
 #lang racket
+
 (define rx_define #rx"^ *#definevari +([a-zA-Z_]+[a-zA-Z_0-9]*) +(integer|boolean|float)")
 (define rx_assign #rx"^ *([a-zA-Z_]+[a-zA-Z_0-9]*) ?= ?([^=]+)")
 (define rx_if #rx"^ *if *\\( *(.*[a-zA-Z_0-9]+) *\\) *then *\n")
+;;(regexp-match #rx"#define *[a-zA-Z]+(?<!i)" "#define tilslsthisi")
 
 (define (float? x)
   (and (not (integer? x)) (real? x)))
@@ -22,7 +24,6 @@
         ((string=? "float" t) "%f")))
 
 (define (declare vars t k)
-  ;; Ask Zhang this
   (cond ((null? vars)
          (list (list k (def_value t) t)))
         (else
@@ -50,23 +51,50 @@
              (append (list (car vars)) (assign (cdr vars) k v t))))))
 
 ;;
-(define (op input vars)
-  (set! input (regexp-replace #rx"([^=])=([^=])" input "\\1 = \\2"))
-  (let ((s (regexp-split #rx" +" input)))
-        (cond ((string=? (car s) "#definevari")
-               (if (boolean? (regexp-match #rx"^[0-9]" (get_i s 2)))
-                      (declare vars (type_map (get_i s 3)) (get_i s 2))
-                      "Invalid identifier name"))
-          (else
-           (input)))))
+;;(define (op input vars)
+;;  (set! input (regexp-replace #rx"([^=])=([^=])" input "\\1 = \\2"))
+;;  (let ((s (regexp-split #rx" +" input)))
+;;        (cond ((string=? (car s) "#definevari")
+;;               (if (boolean? (regexp-match #rx"^[0-9]" (get_i s 2)))
+;;                      (declare vars (type_map (get_i s 3)) (get_i s 2))
+;;                      "Invalid identifier name"))
+;;          (else
+;;           (input)))))
 
+(define (op input vars)
+  (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
+         ;;declare variable
+         (let ((s (regexp-match rx_define input)))
+           (cond ((boolean? s)
+                     (print "Error: bad arguments for #define\n")
+                     vars)
+                   (else 
+                     (print "Here")
+                   (declare vars (type_map (get_i s 3)) (get_i s 2)))
+           )))
+        (else
+         vars)
+        ))
+        ;;((boolean? (regexp-match #rx"^ *#clear *" input))
+         
+         ;;)
+        ;;((boolean? (regexp-match #rx"^ *#exit *" input))
+
+         ;;)
+        ;;((boolean? (regexp-match #rx"^ * *" input))
+
+         ;;)))
+
+        
 ;;
-(define (main_loop)
-  (do ()
-    (exit)
-    ;; expressions
-    (display "123")
+(define (main_loop i vars)
+  (do ((it i (+ it 1)))
+    ((= it 10) "done")
+    (let ((s (read-line)))
+      (set! vars (op s vars))
+      (display vars))
     ))
+
       
 
 (define vars '(("a" 123 "%i") ("b" #t "%b" ) ("c" 3.333 "%f")))
