@@ -87,13 +87,23 @@
 
         
 ;;
-(define (main_loop i vars)
-  (do ((it i (+ it 1)))
-    ((= it 10) "done")
-    (let ((s (read-line)))
-      (set! vars (op s vars))
-      (display vars))
-    ))
+(define (main_loop vars)
+  (let ((s (read-line)))
+    (cond ((not (string=? s "#exit"))
+           (set! vars (op s vars))
+           (display vars)
+           (main_loop vars)))))
+
+;;(define (main_loop vars c)
+;;  (do ((it c (+ c 1)))
+;;    ((= c -1) "Goodbye :)")
+;;    (let ((s (read-line)))
+   ;   (cond ((string=? s "#exit")
+  ;           (print "here")
+     ;        (break)))
+    ;  (set! vars (op s vars))
+     ; (display vars))
+    ;))
 
       
 
