@@ -101,12 +101,21 @@
   (car (RPN (in-port read (open-input-string (string-join (shunting-yard stmt '()))))
   )))
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
 (define rx_identifier "[a-zA-Z_]+[a-zA-Z_0-9]*")
 (define rx_define #rx"^ *#definevari +([a-zA-Z_]+[a-zA-Z_0-9]*) +(integer|boolean|float)")
 (define rx_assign #rx"^ *([a-zA-Z_]+[a-zA-Z_0-9]*) ?= ?([^=]+)")
 (define rx_if #rx"^ *if *\\( *(.*[a-zA-Z_0-9]+) *\\) *then *\n")
-(define true (list "(" "1" "==" "1" ")"))
-(define false (list "(" "1" "==" "0" ")"))
+;(define true (list "(" "1" "==" "1" ")"))
+(define true "(1 == 1)")
+;(define false (list "(" "1" "==" "0" ")"))
+(define false "(1 == 0)")
 
 (require "parsing.ss")
 
@@ -131,6 +140,11 @@
         ((string=? "boolean" t) "%b")
         ((string=? "float" t) "%f")))
 
+(define (type_string v)
+  (cond ((boolean? v) "%b")
+        ((exact-integer? v) "%i")
+        ((real? v) "%f")))
+
 ;; Add a variable to list vars with type t and name (key) k.
 ;; Assign default value. If k already exists, re-declare it with new type
 (define (declare vars t k)
@@ -151,30 +165,54 @@
              (car vars)
              (lookup (cdr vars) k)))))
 
+;; 
+(define (cast type v)
+  (cond ((string=? type "%b")
+         (if (boolean? v)
+             v
+             (not (zero? v))))
+        ((string=? type "%i")
+         (if (boolean? v)
+             (if v
+                 1
+                 0)
+             (inexact->exact (floor v))))               
+        ((string=? type "%f")
+         (if (boolean? v)
+             (if v
+                 1.0
+                 0.0)
+             (exact->inexact v)))))
+
+
 ;; Assign to k value v of type t. If t does not match k's type, return vars
 ;; unchanged.
-(define (assign vars k v t)
+(define (assign vars k v)
   (cond ((null? vars)
         '())
         (else
-         (if (string=? (car (car vars)) k) 
-             (if (string=? (car (cddr (car vars))) t) 
-                 (append (list (list k v t)) (cdr vars))
-                 (begin
-                   (print "Error: Assignment type does not match")
-                   vars))
-             (append (list (car vars)) (assign (cdr vars) k v t))))))
+         (let ((t (get_i (car vars) 3)))
+           (if (string=? (car (car vars)) k)
+               (append (list (list k (cast t v) t)) (cdr vars))
+               (append (list (car vars)) (assign (cdr vars) k v)))))))
 
+
+;; Remove any empty strings
+(define (cleanup l)
+  (cond ((null? l)
+         '())
+        ((string=? (car l) "")
+         (cleanup (cdr l)))
+        (else
+         (append (list (car l)) (cleanup (cdr l))))))
+  
 
 
 ;; Split statement into list of identifiers/numbers/operators
 (define (tokenize statement)
-  (let ((l (regexp-split #rx" +"
-                (regexp-replace #rx"(\\+|-|\\*|/|\\^|==|<>|<=|>=|<|>)"
-                                (string-replace statement " " "") " \\1 "))))
-    (if (null? (cdr l))
-      l
-      (append (list (get_i l 1) (get_i l 2)) (tokenize (get_i l 3))))))
+  (cleanup (regexp-split " +"
+                (regexp-replace* #rx"(\\+|-|\\*|/|\\^|==|<>|<=|>=|<|>|\\(|\\))"
+                                 statement " \\1 "))))
 
 
 
@@ -182,7 +220,11 @@
 (define (substitute vars tokens)
   (cond ((null? tokens)
          '())
-        ((false? (regexp-match "[a-zA-Z_][a-zA-Z_0-9]*" (car tokens)))
+        ((string=? (car tokens) "false")
+         (append (tokenize false) (substitute vars (cdr tokens))))
+        ((string=? (car tokens) "true")
+         (append (tokenize true) (substitute vars (cdr tokens))))
+        ((false? (regexp-match "[a-zA-Z_][a-zA-Z_0-9]*" (car tokens))) ; is it an id
          (append (list (car tokens)) (substitute vars (cdr tokens))))
         (else
          (let ((l (get_i (lookup vars (car tokens)) 2)))
@@ -192,7 +234,7 @@
                       (set! l true)))
                  (else
                   (set! l (number->string l))))
-           (append (list l) (substitute vars (cdr tokens)))))))
+           (append (tokenize l) (substitute vars (cdr tokens)))))))
 
 
 
@@ -200,6 +242,7 @@
 ;(define (arithmetic rhs)
   
 
+;; Operations for every valid statement
 (define (op input vars)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
          ;;declare variable
@@ -213,9 +256,8 @@
            )))
         ((pair? (regexp-match rx_assign input))
          (let ((s (regexp-match rx_assign input)))
-           '()
-           ;;(declare (get_i s 2)
-           ))
+           (let ((retval (calculate (substitute vars (tokenize (get_i s 3))))))
+             (assign vars (get_i s 2) retval))))
          ;;assign a variable
         (else
          vars)
@@ -226,6 +268,7 @@
 ;;
 (define (main_loop vars)
   (let ((s (read-line)))
+    (print s)
     (cond ((not (string=? s "#exit"))
            (set! vars (op s vars))
            (display vars)
