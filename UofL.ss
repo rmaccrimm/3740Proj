@@ -41,7 +41,7 @@
 (define rx_if #rx"^ *if *\\(.*?\\) *then *$")
 (define rx_if_full #rx"^ *if")
 (define rx_for #px"^\\s*for.*do\\s*$")
-(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+stepsize\\s+(\\d+)\\s+do\\s*&(.*)")
+(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+([a-zA-Z0-9_]+)\\s+stepsize\\s+(\\d+)\\s+do\\s*&(.*)")
 (define rx_func #px"^\\s*#definefunc\\s+([a-zA-Z_]+[0-9a-zA-Z_]*)\\s+(.*)")
 (define rx_params #rx"((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z])))\\((.*)\\)")
 (define true "(1 == 1)")
@@ -299,7 +299,7 @@
            (set! vars (for_loop vars
                                 (parse_for (get_i fvars 6))
                                 (get_i fvars 2) ; index
-                                (string->number (get_i fvars 4))   ; stop
+                                (calculate (substitute vars (tokenize (get_i fvars 4))))
                                 (string->number (get_i fvars 5)))) ; stepsize
            vars))
         ;; Execute function
