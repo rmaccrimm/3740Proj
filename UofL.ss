@@ -10,7 +10,6 @@
 
 ; single if statement
 (define (if1 string vars)
-  (println string)
   (let ([condition (car (cdr (regexp-match #rx"\\((.*)\\)" string)))]
         [string-stmt (car (cdr (regexp-match #rx"then(.*)endif" string)))])
     (cond ((calculate (substitute vars (tokenize condition)))
@@ -42,7 +41,7 @@
 (define rx_if #rx"^ *if *\\(.*?\\) *then *$")
 (define rx_if_full #rx"^ *if")
 (define rx_for #px"^\\s*for.*do\\s*$")
-(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do\\s*&(.*)")
+(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+stepsize\\s+(\\d+)\\s+do\\s*&(.*)")
 (define rx_func #px"^\\s*#definefunc\\s+([a-zA-Z_]+[0-9a-zA-Z_]*)\\s+(.*)")
 (define rx_params #rx"((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z])))\\((.*)\\)")
 (define true "(1 == 1)")
@@ -214,7 +213,6 @@
 
 ;; no comment
 (define (for_loop vars stmts ind stop step)
-  (println ind)
   (let ((i (get_i (lookup vars ind) 2)))
     (cond ((> i stop)
            vars)
@@ -245,9 +243,9 @@
                         (cleanup (regexp-split #rx"&" (get_i stmts 4))))))))
 
 
+
 ;;
 (define (declare_all vars l v)
-  (println l)
   (cond ((null? l)
          vars)
          (else
@@ -255,7 +253,12 @@
           (set! vars (assign vars (get_i l 1) (string->number (car v))))
           (declare_all vars (cddr l) (cdr v)))))
           
-        
+          
+
+(define (output vars s)
+  (println (calculate (substitute vars (tokenize s)))))
+
+
 
 (define (ex_func vars name params)
   (set! vars (declare_all vars (get_i (lookup vars name) 2) params))
@@ -264,7 +267,7 @@
 
 ;; Operations for every valid statement
 (define (op input vars)
-  (println input)
+  ;(println input)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
          ;; Declare variable
          (let ((s (regexp-match rx_define input)))
@@ -276,7 +279,7 @@
         ;; Define function
         ((pair? (regexp-match #px"^\\s*#definefunc\\s*" input))
          (let ((s (regexp-match rx_func input)))
-           (println s)
+           ;(println s)
            (declare_func vars (get_i s 2) (regexp-split #rx" " (get_i s 3))
                          (func_loop '()))))
                        
@@ -304,6 +307,10 @@
          (let ((s (regexp-match rx_params input)))
            (ex_func vars (get_i s 2) (regexp-split #rx" " (get_i s 3)))))
          
+        ;; Output
+        ((regexp-match? #px"^ *output\\s+(.*) *" input)
+         (output vars (get_i (regexp-match #px"^ *output\\s+(.*) *" input) 2))
+         vars)
         ;; Immediate
         (else
          (let ((result (substitute vars (tokenize input))))
@@ -343,7 +350,7 @@
                             vars)))
                  (else
                   (set! vars (op s vars))))
-           (println vars)
+           ;(println vars)
            (main_loop vars)))))
 
 
