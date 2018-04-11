@@ -43,7 +43,8 @@
 (define rx_if_full #rx"^ *if")
 (define rx_for #px"^\\s*for.*do\\s*$")
 (define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do\\s*&(.*)")
-(define rx_func #px"^\\s*#definefunc\\s+((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z])))\\s+(.*)")
+(define rx_func #px"^\\s*#definefunc\\s+([a-zA-Z_]+[0-9a-zA-Z_]*)\\s+(.*)")
+(define rx_params #rx"((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z])))\\((.*)\\)")
 (define true "(1 == 1)")
 (define false "(1 == 0)")
 
@@ -243,15 +244,23 @@
                         (list(get_i stmts 3))
                         (cleanup (regexp-split #rx"&" (get_i stmts 4))))))))
 
-(define (declare_all l)
+
+;;
+(define (declare_all vars l v)
+  (println l)
   (cond ((null? l)
-         '()
+         vars)
          (else
-          (declare 
+          (set! vars (declare vars (type_map (get_i l 2)) (get_i l 1)))
+          (set! vars (assign vars (get_i l 1) (string->number (car v))))
+          (declare_all vars (cddr l) (cdr v)))))
+          
         
 
-(define (ex_func 
-
+(define (ex_func vars name params)
+  (set! vars (declare_all vars (get_i (lookup vars name) 2) params))
+  (stmt_loop vars (get_i (lookup vars name) 3))
+  vars)
 
 ;; Operations for every valid statement
 (define (op input vars)
@@ -264,8 +273,12 @@
                      vars)
                    (else 
                      (declare vars (type_map (get_i s 3)) (get_i s 2))))))
-        ;((pair? (regexp-match #px"^\\s*#definefunc\\s*" input))
-         ;(let ((s (regexp-match  input)))
+        ;; Define function
+        ((pair? (regexp-match #px"^\\s*#definefunc\\s*" input))
+         (let ((s (regexp-match rx_func input)))
+           (println s)
+           (declare_func vars (get_i s 2) (regexp-split #rx" " (get_i s 3))
+                         (func_loop '()))))
                        
         ;; Assignment
         ((pair? (regexp-match rx_assign input))
@@ -286,14 +299,33 @@
                                 (string->number (get_i fvars 4))   ; stop
                                 (string->number (get_i fvars 5)))) ; stepsize
            vars))
+        ;; Execute function
+        ((regexp-match? rx_params input)
+         (let ((s (regexp-match rx_params input)))
+           (ex_func vars (get_i s 2) (regexp-split #rx" " (get_i s 3)))))
+         
         ;; Immediate
         (else
          (let ((result (substitute vars (tokenize input))))
            (if (null? result)
                (println "Invalid identifier given")
                (print (calculate result)))) 
-         vars)))
+         vars))) 
 
+(define (func_loop stmts)
+  (display "   > ")
+  (let ((s (read-line)))
+    ;(println s)
+    (cond ((not (string=? s "#definefunc"))
+           (cond ((regexp-match? rx_if s)
+                  (set! stmts (append stmts (list (string-join (append (list s) (read_next rx_if "endif" 1)) " ")))))
+                 ((regexp-match? rx_for s)
+                  (set! stmts (append stmts (list (string-join (append (list s) (read_next rx_for "endfor" 1)) "&")))))
+                 (else
+                  (set! stmts (append stmts (list s)))))
+           (func_loop stmts))
+          (else
+            stmts))))
 
 ;; Get input
 (define (main_loop vars)
@@ -316,7 +348,7 @@
 
 
 (define vars '(("a" 123 "%i") ("b" #t "%b" ) ("c" 3.333 "%f")))
-(define funcs '(("func1" '("p1" "p2") '("a" "c+10.3"))))
+(define funcs (list (list "func1" (list "p1" "integer" "p2" "integer") (list "a" "c+10.3"))))
 
 (define (uofl)
   (main_loop vars))
