@@ -276,6 +276,11 @@
                      vars)
                    (else 
                      (declare vars (type_map (get_i s 3)) (get_i s 2))))))
+
+        ;; Clear variables
+        ((regexp-match? #rx"^ *#clear *" input)
+         '())
+
         ;; Define function
         ((pair? (regexp-match #px"^\\s*#definefunc\\s*" input))
          (let ((s (regexp-match rx_func input)))
@@ -350,7 +355,7 @@
                             vars)))
                  (else
                   (set! vars (op s vars))))
-           ;(println vars)
+           (println vars)
            (main_loop vars)))))
 
 
