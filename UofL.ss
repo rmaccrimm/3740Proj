@@ -57,6 +57,8 @@
 (define rx_define #rx"^ *#definevari +((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))) +(integer|boolean|float)")
 (define rx_if #rx"^ *if *\\(.*?\\) *then *$")
 (define rx_if_full #rx"^ *if")
+(define rx_for #px"^\\s*for.*do\\s*$")
+(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do(.*)")
 (define true "(1 == 1)")
 (define false "(1 == 0)")
 
@@ -197,12 +199,17 @@
                                
 
 ;; Read input until term is found
-(define (read_next term)
+(define (read_next expr term count)
   (display "    > ")
   (let ((s (read-line)))
-    (if (regexp-match? (pregexp (string-append " *" term " *$")) s)
-        (list s)
-        (append (list s) (read_next term))))) 
+    (cond ((regexp-match? expr s)
+           (set! count (+ 1 count)))
+          ((regexp-match? (pregexp (string-append " *" term " *$")) s)
+           (set! count (- count 1))))
+    (cond ((= 0 count)
+          (list s))
+          (else
+           (append (list s) (read_next expr term count))))))
 
 ;(define (do-stats l))
   
@@ -211,8 +218,17 @@
  ; do all stats with op
   ;(loop)
 
-;(define (for_loop vars string))
-  
+;(define (for_loop vars string)
+
+(define (parse_for input)
+  (let (( stmts (regexp-match #px"\\s*(.*)(for.*?endfor)\\s*(.*)endfor" input))) ;; contains for loop
+        (cond ((false? stmts)
+               (regexp-split #rx"&" stmts))
+              (else
+               (append (cleanup (regexp-split #rx"&" (get_i stmts 2)))
+                        (list(get_i stmts 3))
+                        (cleanup (regexp-split #rx"&" (get_i stmts 4))))))))
+
 
 ;; Operations for every valid statement
 (define (op input vars)
@@ -234,7 +250,14 @@
         ((regexp-match? rx_if_full input)
          (select-if input vars))
         ;; For loops
-        
+        ((regexp-match? rx_for_cap input)
+         (let ((fvars (regexp-match rx_for_cap input)))
+           (set! vars (declare vars "%i" (get_i fvars 2)))
+           (set! vars (assign vars (get_i fvars 2) (string->number (get_i fvars 3))))
+           (println (parse_for (get_i fvars 6)))
+           vars
+           ))
+        ;; Immediate
         (else
          (let ((result (substitute vars (tokenize input))))
            (if (null? result)
@@ -250,10 +273,13 @@
     (println s)
     (cond ((not (string=? s "#exit"))
            (cond ((regexp-match? rx_if s)
-               (set! vars
-                     (op
-                      (string-join (append (list s) (read_next "endif")) " ")
-                      vars)))
+                  (set! vars
+                        (op (string-join (append (list s) (read_next rx_if "endif" 1)) " ")
+                            vars)))
+                 ((regexp-match? rx_for s)
+                  (set! vars
+                        (op (string-join (append (list s) (read_next rx_for "endfor" 1)) "&")
+                            vars)))
                  (else
                   (set! vars (op s vars))))
            (println vars)
