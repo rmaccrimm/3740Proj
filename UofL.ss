@@ -320,7 +320,7 @@
          vars))) 
 
 (define (func_loop stmts)
-  (display "   > ")
+  (display "    > ")
   (let ((s (read-line)))
     ;(println s)
     (cond ((not (string=? s "#definefunc"))
