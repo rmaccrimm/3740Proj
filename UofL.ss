@@ -108,13 +108,11 @@
 
 
 
-(define rx_identifier "[a-zA-Z_]+[a-zA-Z_0-9]*")
-(define rx_define #rx"^ *#definevari +([a-zA-Z_]+[a-zA-Z_0-9]*) +(integer|boolean|float)")
-(define rx_assign #rx"^ *([a-zA-Z_]+[a-zA-Z_0-9]*) ?= ?([^=]+)")
+(define rx_identifier #rx"(?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))")
+(define rx_assign #rx"^ *((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))) *=(?!=)(.*)")
+(define rx_define #rx"^ *#definevari +((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))) +(integer|boolean|float)")
 (define rx_if #rx"^ *if *\\( *(.*[a-zA-Z_0-9]+) *\\) *then *\n")
-;(define true (list "(" "1" "==" "1" ")"))
 (define true "(1 == 1)")
-;(define false (list "(" "1" "==" "0" ")"))
 (define false "(1 == 0)")
 
 (require "parsing.ss")
@@ -122,11 +120,13 @@
 (define (float? x)
   (and (not (integer? x)) (real? x)))
 
+
 ;; Access ith elemetn in list l
 (define (get_i l i)
   (if (= i 1)
       (car l)
       (get_i (cdr l) (- i 1))))
+
 
 ;; Default values
 (define (def_value t)
@@ -134,16 +134,19 @@
         ((string=? "%i" t) 0)
         ((string=? "%f" t) 0)))
 
+
 ;; Map type name to its representation
 (define (type_map t)
   (cond ((string=? "integer" t) "%i")
         ((string=? "boolean" t) "%b")
         ((string=? "float" t) "%f")))
 
+
 (define (type_string v)
   (cond ((boolean? v) "%b")
         ((exact-integer? v) "%i")
         ((real? v) "%f")))
+
 
 ;; Add a variable to list vars with type t and name (key) k.
 ;; Assign default value. If k already exists, re-declare it with new type
@@ -154,6 +157,7 @@
          (if (string=? (car (car vars)) k)
              (append (list (list k (def_value t) t)) (cdr vars))
              (append (list (car vars)) (declare (cdr vars) t k))))))
+
 
 ;; Find value of variable k in list vars, if it exists. Otherwise return
 ;; empty list
@@ -224,55 +228,73 @@
          (append (tokenize false) (substitute vars (cdr tokens))))
         ((string=? (car tokens) "true")
          (append (tokenize true) (substitute vars (cdr tokens))))
-        ((false? (regexp-match "[a-zA-Z_][a-zA-Z_0-9]*" (car tokens))) ; is it an id
-         (append (list (car tokens)) (substitute vars (cdr tokens))))
         (else
-         (let ((l (get_i (lookup vars (car tokens)) 2)))
-           (cond ((boolean? l)
-                  (if (false? l)
-                      (set! l false)
-                      (set! l true)))
-                 (else
-                  (set! l (number->string l))))
-           (append (tokenize l) (substitute vars (cdr tokens)))))))
+         (let ((retval (substitute vars (cdr tokens))))
+           (if (and (pair? (cdr tokens)) (null? retval))
+               '()
+               (cond ((false? (regexp-match rx_identifier (car tokens))) ; Not an identifier
+                      (append (list (car tokens)) (substitute vars (cdr tokens))))
+                     (else ; is an identifier
+                      (let ((look (lookup vars (car tokens))))
+                        (if (null? look)
+                            '()
+                            (let ((l (get_i look 2)))
+                              (cond ((boolean? l)
+                                     (if (false? l)
+                                         (set! l false)
+                                         (set! l true)))
+                                    (else
+                                     (set! l (number->string l))))
+                              (append (tokenize l) retval)))))))))))
+                               
 
-
-
-;; Calculate a numeric or boolean value from a statement
-;(define (arithmetic rhs)
-  
+;; Read input until term is found
+(define (read_next term)
+  (let ((s (read-line)))
+    (if (regexp-match? (pregexp (string-append " *" term " *$")) s)
+        (list s)
+        (append (list s) (read_next term)))))
 
 ;; Operations for every valid statement
 (define (op input vars)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
-         ;;declare variable
+         ;; Declare variable
          (let ((s (regexp-match rx_define input)))
            (cond ((boolean? s)
-                     (print "Error: bad arguments for #define\n")
+                     (println "Error: bad arguments for #definevari")
                      vars)
                    (else 
-                     (print "Here")
-                   (declare vars (type_map (get_i s 3)) (get_i s 2)))
-           )))
+                     (declare vars (type_map (get_i s 3)) (get_i s 2))))))
+        ;; Assignment
         ((pair? (regexp-match rx_assign input))
          (let ((s (regexp-match rx_assign input)))
            (let ((retval (calculate (substitute vars (tokenize (get_i s 3))))))
              (assign vars (get_i s 2) retval))))
-         ;;assign a variable
+        ;; If
+        ((regexp-match? #rx"^ *if" input)
+         (let ((ifstat (append (list input) (read_next "endif"))))
+           (list-join ifstat " ")
+           vars))
         (else
-         vars)
-        ))
+         (let ((result (substitute vars (tokenize input))))
+           (if (null? result)
+               (println "Invalid identifier given")
+               (println (calculate result))))
+         vars)))
 
 
-        
-;;
+;; Get 
 (define (main_loop vars)
+  (display "UofL> ")
   (let ((s (read-line)))
-    (print s)
+    (println s)
     (cond ((not (string=? s "#exit"))
            (set! vars (op s vars))
-           (display vars)
+           (println vars)
            (main_loop vars)))))
-      
+
+
 (define vars '(("a" 123 "%i") ("b" #t "%b" ) ("c" 3.333 "%f")))
 
+(define (uofl)
+  (main_loop vars))
