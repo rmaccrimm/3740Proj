@@ -43,6 +43,7 @@
 (define rx_if_full #rx"^ *if")
 (define rx_for #px"^\\s*for.*do\\s*$")
 (define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do\\s*&(.*)")
+(define rx_func #px"^\\s*#definefunc\\s+((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z])))\\s+(.*)")
 (define true "(1 == 1)")
 (define false "(1 == 0)")
 
@@ -88,6 +89,17 @@
          (if (string=? (car (car vars)) k)
              (append (list (list k (def_value t) t)) (cdr vars))
              (append (list (car vars)) (declare (cdr vars) t k))))))
+
+
+;;
+(define (declare_func funcs name params stmts)
+  (cond ((null? funcs)
+         (list (list name params stmts)))
+        (else
+         (if (string=? (car (car funcs)) name)
+             (append (list (list name params stmts)) (cdr funcs))
+             (append (list (car funcs)) (declare_func (cdr funcs) name params stmts))))))
+               
 
 
 ;; Find value of variable k in list vars, if it exists. Otherwise return
@@ -166,7 +178,8 @@
          (let ((retval (substitute vars (cdr tokens))))
            (if (and (pair? (cdr tokens)) (null? retval))
                '()
-               (cond ((false? (regexp-match rx_identifier (car tokens))) ; Not an identifier
+               (cond ((and (false? (regexp-match rx_identifier (car tokens)))
+                          (not (regexp-match? #rx"(I|J)" (car tokens)))) ; Not an identifier
                       (append (list (car tokens)) (substitute vars (cdr tokens))))
                      (else ; is an identifier
                       (let ((look (lookup vars (car tokens))))
@@ -197,8 +210,10 @@
 
 
 
+
 ;; no comment
 (define (for_loop vars stmts ind stop step)
+  (println ind)
   (let ((i (get_i (lookup vars ind) 2)))
     (cond ((> i stop)
            vars)
@@ -218,7 +233,7 @@
 
 
 
-;; Split the body of a for loop into statments (incuding additonal for loops) 
+;; Split the body of a for loop into statments
 (define (parse_for input)
   (let (( stmts (regexp-match #px"\\s*(.*)(for.*?endfor)\\s*(.*)endfor" input))) ;; contains for loop
         (cond ((false? stmts)
@@ -228,10 +243,19 @@
                         (list(get_i stmts 3))
                         (cleanup (regexp-split #rx"&" (get_i stmts 4))))))))
 
+(define (declare_all l)
+  (cond ((null? l)
+         '()
+         (else
+          (declare 
+        
+
+(define (ex_func 
+
 
 ;; Operations for every valid statement
 (define (op input vars)
-  ;(println input)
+  (println input)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
          ;; Declare variable
          (let ((s (regexp-match rx_define input)))
@@ -240,6 +264,9 @@
                      vars)
                    (else 
                      (declare vars (type_map (get_i s 3)) (get_i s 2))))))
+        ;((pair? (regexp-match #px"^\\s*#definefunc\\s*" input))
+         ;(let ((s (regexp-match  input)))
+                       
         ;; Assignment
         ((pair? (regexp-match rx_assign input))
          (let ((s (regexp-match rx_assign input)))
@@ -264,7 +291,7 @@
          (let ((result (substitute vars (tokenize input))))
            (if (null? result)
                (println "Invalid identifier given")
-               (println (calculate result))))
+               (print (calculate result)))) 
          vars)))
 
 
@@ -289,6 +316,7 @@
 
 
 (define vars '(("a" 123 "%i") ("b" #t "%b" ) ("c" 3.333 "%f")))
+(define funcs '(("func1" '("p1" "p2") '("a" "c+10.3"))))
 
 (define (uofl)
   (main_loop vars))
