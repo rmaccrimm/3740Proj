@@ -1,106 +1,50 @@
 #lang racket
-(require racket/format)
-(require racket/string)
-(require readline/readline)
+(require "shuntingyard.ss")
 
-; Shunting-yard and RPN algorithm
-; Based on code by ... from https://github.com/...
-
-; Operator list
-(define (operator? symbol)
-  (member symbol '("+" "-" "*" "/" "%" "^" "==" "<>" ">=" "<=" ">" "<"))
+; the interface for if statements e.x. "if (1 == 1) then b = 9 endif"
+(define (select-if string vars)
+  (if (regexp-match #rx"elseif" string)
+      (if2 string vars)  ; does the 2 if stmt case
+      (if1 string vars)) ; does the single if stmt case
   )
 
-; Determines the associativitiy of a given mathematical operator
-(define (asso-of operator)
-  (if (member operator '("+" "-" "*" "/"))
-      'left
-      'right
-      )
-  )
+; single if statement
+(define (if1 string vars)
+  (let ([condition (car (cdr (regexp-match #rx"\\((.*)\\)" string)))]
+        [string-stmt (car (cdr (regexp-match #rx"then(.*)endif" string)))])
+    (cond ((calculate (substitute vars (tokenize condition)))
+           (op string-stmt vars))
+          (else
+           vars))))
 
-; Determine the precedence of a given mathematical operator
-(define (prec-of operator)
-  (case operator
-    (("==" "<>" "<=" ">=" "<" ">") 1)
-    (("+" "-")                     2)
-    (("*" "/")                     3)
-    (("^")                         4)
-    (else                          0)
-    )
-  )
+; two if statements
+(define (if2 string vars)
+  (let* ([condition1 (car (regexp-match* #rx"[^\\(\\)]*(?<=\\()[^\\)]*(?=\\))[^\\(\\)]*" string))]
+         [string-stmt1 (car (regexp-match* #rx"(?<=then)(.*?)(?=elseif|endif)" string))]
+         [condition2 (cadr (regexp-match* #rx"[^\\(\\)]*(?<=\\()[^\\)]*(?=\\))[^\\(\\)]*" string))]
+         [string-stmt2 (cadr (regexp-match* #rx"(?<=then)(.*?)(?=elseif|endif)" string))])
+    (cond ((calculate (substitute vars (tokenize condition1))) ;; The first true condition
+           (op string-stmt1 vars))  ;;TODO: place the string to stmt parsing function to evaluate the string
+          ((calculate (substitute vars (tokenize condition2))) ;; The second true condition
+           (op string-stmt2 vars))  ;;TODO: place the string to stmt parsing function to evaluate the string
+          (else
+           vars))))
 
-; Action to take if the token in the stmt is an operator
-(define (operator-actions stmt stack)
-  (let* ([token-prec (prec-of (car stmt))]
-         [token-asso (asso-of (car stmt))]
-         [stack-oper (if (not (null? stack))
-                         (car stack)
-                         '())]
-         [stack-prec (if (not (null? stack-oper))
-                         (prec-of stack-oper)
-                         0)])
-    (cond ((or (and (eq? token-asso 'left)
-                    (<= token-prec stack-prec))
-               (and (eq? token-asso 'right)
-                    (< token-prec stack-prec)))
-           (cons stack-oper (shunting-yard stmt (cdr stack))))
-          (else (shunting-yard (cdr stmt)(cons (car stmt) stack))))
-    )
-  )
 
-; Action to take if (null? stmt)
-(define (stack-op stack)
-  (cond ((and (not (null? stack))
-              (equal? (car stack) "("))
-         (display "unbalenced paranthesis"))
-        ((null? stack) '())
-        (else (cons (car stack)(shunting-yard '() (cdr stack)))))
-  )
+; the interface for the for loop e.x "for I = 1 to 10 stepsize 2 do "statements" endfor"
+(define (for-loop string vars)
+  (let* ([initial (string->number (car (regexp-match* #px"[[:digit:]]+" string)))]
+         [final (string->number (car (cdr (regexp-match* #px"[[:digit:]]+" string))))]
+         [stepsize (string->number (car (cdr (cdr (regexp-match* #px"[[:digit:]]+" string)))))]
+         [loop-stmt (car (regexp-match* #rx"(?<=do)(.*)(?=endfor)" string))])
+    (do-for-loop initial final stepsize loop-stmt)))
 
-; Main body for shunting-yard
-(define (shunting-yard stmt stack)
-  (cond ((null? stmt)
-         (stack-op stack))
-        ((number? (string->number (car stmt)))
-        (cons (car stmt) (shunting-yard (cdr stmt) stack)))
-        ((operator? (car stmt))
-         (operator-actions stmt stack))
-        ((equal? (car stmt) "(")
-         (shunting-yard (cdr stmt)(cons (car stmt) stack)))
-        ((equal? (car stmt) ")")
-         (if (equal? "(" (car stack ))
-             (shunting-yard (cdr stmt) (cdr stack))
-             (cons (car stack )(shunting-yard stmt (cdr stack)))))
-        )
-  )
-; Calculates the result from Reverse Polish Notation (The result from Shunting-Yard)
-(define (RPN expr)
-  (for/fold ([stack '()]) ([token expr])
-    (match* (token stack)
-     [((? number? n) s) (cons n s)]
-     [('+ (list x y s ___)) (cons (+ x y) s)]
-     [('- (list x y s ___)) (cons (- y x) s)]
-     [('* (list x y s ___)) (cons (* x y) s)]
-     [('/ (list x y s ___)) (cons (/ y x) s)]
-     [('^ (list x y s ___)) (cons (expt y x) s)]
-     [('== (list x y s ___)) (cons (eq? y x) s)]
-     [('<> (list x y s ___)) (cons (not (eq? y x)) s)]
-     [('<= (list x y s ___)) (cons (or (< y x)(eq? x y)) s)]
-     [('>= (list x y s ___)) (cons (or (> y x)(eq? x y)) s)]
-     [('> (list x y s ___)) (cons (> y x) s)]
-     [('< (list x y s ___)) (cons (< y x) s)]
-     [(x s) (error "calculate-RPN: Cannot calculate the expression:"
-                   (reverse (cons x s)))])))
-
-; Returns the result from infix notation.
-; The input is the tokenized string of the statement.
-; It will return a numerical value if the statement is an arithmatic operation
-; or a boolean value if the statement is a logical operation.
-(define (calculate stmt)
-  (car (RPN (in-port read (open-input-string (string-join (shunting-yard stmt '()))))
-  )))
-
+; the final is inclusive
+(define (do-for-loop initial final stepsize loop-stmt)
+  (if (not (> initial final))
+      (begin (printf loop-stmt)(newline)
+             (do-for-loop (+ initial stepsize) final stepsize loop-stmt))
+      (print"loop ended")))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -111,7 +55,8 @@
 (define rx_identifier #rx"(?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))")
 (define rx_assign #rx"^ *((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))) *=(?!=)(.*)")
 (define rx_define #rx"^ *#definevari +((?:(?:[a-zA-Z_][0-9a-zA-Z_]+)|(?:[a-zA-HK-Z]))) +(integer|boolean|float)")
-(define rx_if #rx"^ *if *\\( *(.*[a-zA-Z_0-9]+) *\\) *then *\n")
+(define rx_if #rx"^ *if *\\(.*?\\) *then *$")
+(define rx_if_full #rx"^ *if")
 (define true "(1 == 1)")
 (define false "(1 == 0)")
 
@@ -169,7 +114,8 @@
              (car vars)
              (lookup (cdr vars) k)))))
 
-;; 
+
+;; Cast value v to the given type
 (define (cast type v)
   (cond ((string=? type "%b")
          (if (boolean? v)
@@ -219,6 +165,8 @@
                                  statement " \\1 "))))
 
 
+  
+
 
 ;; Replace identifiers with their stored value as a string
 (define (substitute vars tokens)
@@ -250,13 +198,25 @@
 
 ;; Read input until term is found
 (define (read_next term)
+  (display "    > ")
   (let ((s (read-line)))
     (if (regexp-match? (pregexp (string-append " *" term " *$")) s)
         (list s)
-        (append (list s) (read_next term)))))
+        (append (list s) (read_next term))))) 
+
+;(define (do-stats l))
+  
+
+;(define (loop stats stop stepsize)
+ ; do all stats with op
+  ;(loop)
+
+;(define (for_loop vars string))
+  
 
 ;; Operations for every valid statement
 (define (op input vars)
+  (println input)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
          ;; Declare variable
          (let ((s (regexp-match rx_define input)))
@@ -270,11 +230,11 @@
          (let ((s (regexp-match rx_assign input)))
            (let ((retval (calculate (substitute vars (tokenize (get_i s 3))))))
              (assign vars (get_i s 2) retval))))
-        ;; If
-        ((regexp-match? #rx"^ *if" input)
-         (let ((ifstat (append (list input) (read_next "endif"))))
-           (list-join ifstat " ")
-           vars))
+        ;; If statement
+        ((regexp-match? rx_if_full input)
+         (select-if input vars))
+        ;; For loops
+        
         (else
          (let ((result (substitute vars (tokenize input))))
            (if (null? result)
@@ -283,13 +243,19 @@
          vars)))
 
 
-;; Get 
+;; Get input
 (define (main_loop vars)
   (display "UofL> ")
   (let ((s (read-line)))
     (println s)
     (cond ((not (string=? s "#exit"))
-           (set! vars (op s vars))
+           (cond ((regexp-match? rx_if s)
+               (set! vars
+                     (op
+                      (string-join (append (list s) (read_next "endif")) " ")
+                      vars)))
+                 (else
+                  (set! vars (op s vars))))
            (println vars)
            (main_loop vars)))))
 
