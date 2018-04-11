@@ -10,6 +10,7 @@
 
 ; single if statement
 (define (if1 string vars)
+  (println string)
   (let ([condition (car (cdr (regexp-match #rx"\\((.*)\\)" string)))]
         [string-stmt (car (cdr (regexp-match #rx"then(.*)endif" string)))])
     (cond ((calculate (substitute vars (tokenize condition)))
@@ -30,23 +31,6 @@
           (else
            vars))))
 
-
-; the interface for the for loop e.x "for I = 1 to 10 stepsize 2 do "statements" endfor"
-(define (for-loop string vars)
-  (let* ([initial (string->number (car (regexp-match* #px"[[:digit:]]+" string)))]
-         [final (string->number (car (cdr (regexp-match* #px"[[:digit:]]+" string))))]
-         [stepsize (string->number (car (cdr (cdr (regexp-match* #px"[[:digit:]]+" string)))))]
-         [loop-stmt (car (regexp-match* #rx"(?<=do)(.*)(?=endfor)" string))])
-    (do-for-loop initial final stepsize loop-stmt)))
-
-; the final is inclusive
-(define (do-for-loop initial final stepsize loop-stmt)
-  (if (not (> initial final))
-      (begin (printf loop-stmt)(newline)
-             (do-for-loop (+ initial stepsize) final stepsize loop-stmt))
-      (print"loop ended")))
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -58,7 +42,7 @@
 (define rx_if #rx"^ *if *\\(.*?\\) *then *$")
 (define rx_if_full #rx"^ *if")
 (define rx_for #px"^\\s*for.*do\\s*$")
-(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do(.*)")
+(define rx_for_cap #px"^\\s*for\\s+(I|J)\\s*=\\s*(\\d+)\\s+to\\s+(\\d+)\\s+st\\s+(\\d+)\\s+do\\s*&(.*)")
 (define true "(1 == 1)")
 (define false "(1 == 0)")
 
@@ -211,19 +195,34 @@
           (else
            (append (list s) (read_next expr term count))))))
 
-;(define (do-stats l))
-  
 
-;(define (loop stats stop stepsize)
- ; do all stats with op
-  ;(loop)
 
-;(define (for_loop vars string)
+;; no comment
+(define (for_loop vars stmts ind stop step)
+  (let ((i (get_i (lookup vars ind) 2)))
+    (cond ((> i stop)
+           vars)
+          (else
+           (set! vars (stmt_loop vars stmts))
+           (set! vars (assign vars ind (+ i step)))
+           (for_loop vars stmts ind stop step)))))
 
+
+;; Execute a list of statements by calling op
+(define (stmt_loop vars stmts)
+    (cond ((null? stmts)
+           vars)
+          (else
+           (set! vars (op (car stmts) vars))
+           (stmt_loop vars (cdr stmts)))))
+
+
+
+;; Split the body of a for loop into statments (incuding additonal for loops) 
 (define (parse_for input)
   (let (( stmts (regexp-match #px"\\s*(.*)(for.*?endfor)\\s*(.*)endfor" input))) ;; contains for loop
         (cond ((false? stmts)
-               (regexp-split #rx"&" stmts))
+               (cleanup (regexp-split #rx"&" (regexp-replace #rx"endfor" input ""))))
               (else
                (append (cleanup (regexp-split #rx"&" (get_i stmts 2)))
                         (list(get_i stmts 3))
@@ -232,7 +231,7 @@
 
 ;; Operations for every valid statement
 (define (op input vars)
-  (println input)
+  ;(println input)
   (cond ((pair? (regexp-match #rx"^ *#definevari *" input))
          ;; Declare variable
          (let ((s (regexp-match rx_define input)))
@@ -254,9 +253,12 @@
          (let ((fvars (regexp-match rx_for_cap input)))
            (set! vars (declare vars "%i" (get_i fvars 2)))
            (set! vars (assign vars (get_i fvars 2) (string->number (get_i fvars 3))))
-           (println (parse_for (get_i fvars 6)))
-           vars
-           ))
+           (set! vars (for_loop vars
+                                (parse_for (get_i fvars 6))
+                                (get_i fvars 2) ; index
+                                (string->number (get_i fvars 4))   ; stop
+                                (string->number (get_i fvars 5)))) ; stepsize
+           vars))
         ;; Immediate
         (else
          (let ((result (substitute vars (tokenize input))))
@@ -270,7 +272,7 @@
 (define (main_loop vars)
   (display "UofL> ")
   (let ((s (read-line)))
-    (println s)
+    ;(println s)
     (cond ((not (string=? s "#exit"))
            (cond ((regexp-match? rx_if s)
                   (set! vars
